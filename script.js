@@ -1,10 +1,11 @@
 const webAppUrl = "INSERT_SECRET_URL_HERE";
+const AUTH_TOKEN = "AUTH_TOKEN_PLACEHOLDER";
 
 /**
  * Get auth token
  */
 function getAuthToken() {
-    return 'Physics-Secret-2026'; // Will be replaced during deployment
+    return AUTH_TOKEN;
 }
 
 /**
@@ -28,16 +29,15 @@ async function makeApiCall(action, params = {}, postData = null) {
         url.searchParams.append(key, params[key]);
     });
     
-    // If we have POST data, send it as a parameter
+    // If we have POST data, send it as form data
     if (postData) {
-        url.searchParams.append("data", JSON.stringify(postData));
-        // Use POST method but with query parameters (no preflight)
+        const formBody = 'data=' + encodeURIComponent(JSON.stringify(postData));
         const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: 'data=' + encodeURIComponent(JSON.stringify(postData))
+            body: formBody
         });
         const text = await response.text();
         try {
@@ -424,7 +424,6 @@ async function executeSubmit() {
     finalBtn.disabled = true;
     
     try {
-        // Send POST with form-encoded body to avoid CORS preflight
         const url = new URL(webAppUrl);
         url.searchParams.append("token", getAuthToken());
         
@@ -485,7 +484,7 @@ function switchView(viewId) {
 // Expose to global scope
 window.attemptLogin = attemptLogin;
 window.startEvaluation = startEvaluation;
-window.submitEvaluation = submitEvaluation;
 window.executeSubmit = executeSubmit;
+window.submitEvaluation = submitEvaluation;
 window.checkCompletion = checkCompletion;
 window.switchView = switchView;
