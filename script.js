@@ -2,15 +2,13 @@ const webAppUrl = "INSERT_SECRET_URL_HERE";
 
 /**
  * Get authenticated URL for API requests
- * Token is stored in memory only, never exposed in DOM
+ * Uses no-cors mode to avoid CORS issues with Google Apps Script
  */
 function getAuthUrl(action = "") {
     if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) return null;
     
     try {
         const url = new URL(webAppUrl);
-        // Token will be added as parameter for GET requests
-        // For POST requests, it will be sent in headers
         if (action) url.searchParams.append("action", action);
         return url.toString();
     } catch (e) {
@@ -20,39 +18,80 @@ function getAuthUrl(action = "") {
 }
 
 /**
- * Get auth headers for API requests
- * The actual token is fetched from a secure source
+ * Get auth token for API requests
+ * The token is appended as query parameter for all requests
  */
 let authToken = null;
 
-async function getAuthHeaders() {
+async function getAuthToken() {
     if (!authToken) {
-        // In production, this should be fetched from a secure endpoint
-        // or injected during build process
-        authToken = sessionStorage.getItem('auth_token') || await fetchAuthToken();
+        // Get token from session storage or fetch it
+        authToken = sessionStorage.getItem('auth_token');
+        if (!authToken) {
+            // In production, this would be injected during build
+            authToken = 'Physics-Secret-2026'; // Will be replaced during deployment
+            sessionStorage.setItem('auth_token', authToken);
+        }
     }
-    return {
-        'Authorization': authToken || '',
-        'Content-Type': 'application/json'
-    };
+    return authToken;
 }
 
 /**
- * Fetch auth token from secure source
- * In this implementation, we use a build-time injected token
+ * Make API request to Google Apps Script
+ * Uses redirect mode and token in URL to avoid CORS preflight
  */
-async function fetchAuthToken() {
-    // This token should be injected during build or fetched from a secure endpoint
-    // For GitHub Pages, it can be embedded as a build artifact
+async function makeApiRequest(action, params = {}, method = 'GET', body = null) {
+    const baseUrl = getAuthUrl(action);
+    if (!baseUrl) {
+        throw new Error("Configuration error: WebApp URL not set");
+    }
+    
+    const token = await getAuthToken();
+    const url = new URL(baseUrl);
+    url.searchParams.append("token", token);
+    
+    // Add all params to URL for GET requests
+    if (method === 'GET') {
+        Object.keys(params).forEach(key => {
+            url.searchParams.append(key, params[key]);
+        });
+    }
+    
+    const fetchOptions = {
+        method: method,
+        // Use 'cors' mode but with redirect to handle Google Apps Script
+        mode: 'cors',
+        redirect: 'follow',
+    };
+    
+    // Add headers and body for POST requests
+    if (method === 'POST') {
+        fetchOptions.headers = {
+            'Content-Type': 'text/plain', // Use text/plain to avoid preflight
+            'Authorization': token
+        };
+        if (body) {
+            fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+        }
+    }
+    
     try {
-        // In production, replace this with actual secure token retrieval
-        // This is a placeholder that would be replaced during deployment
-        const token = 'Physics-Secret-2026'; // This should come from secure build process
-        sessionStorage.setItem('auth_token', token);
-        return token;
+        const response = await fetch(url.toString(), fetchOptions);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            // If not JSON, return text wrapped in object
+            return { result: text };
+        }
     } catch (error) {
-        console.error('Failed to fetch auth token:', error);
-        return null;
+        console.error('API request failed:', error);
+        throw error;
     }
 }
 
@@ -78,9 +117,7 @@ window.onload = async function() {
     }
     
     try {
-        const headers = await getAuthHeaders();
-        const response = await fetch(fetchUrl, { headers });
-        const data = await response.json();
+        const data = await makeApiRequest("getInitialData");
         
         if (data.error) {
             document.getElementById('loading-error').innerText = 
@@ -132,7 +169,7 @@ function populateInitialDropdowns(data) {
         data.sections.forEach(sec => {
             const opt = document.createElement('option');
             opt.value = sec;
-            opt.innerHTML = sec; // Use innerHTML instead of innerText for safety
+            opt.textContent = sec;
             sectionSelect.appendChild(opt);
         });
     }
@@ -143,7 +180,7 @@ function populateInitialDropdowns(data) {
         data.groups.forEach(grp => {
             const opt = document.createElement('option');
             opt.value = grp;
-            opt.innerHTML = "Group " + grp;
+            opt.textContent = "Group " + grp;
             groupSelect.appendChild(opt);
         });
     }
@@ -154,7 +191,7 @@ function populateInitialDropdowns(data) {
         data.activities.forEach(act => {
             const opt = document.createElement('option');
             opt.value = act;
-            opt.innerHTML = act;
+            opt.textContent = act;
             activitySelect.appendChild(opt);
         });
     }
@@ -177,24 +214,20 @@ async function attemptLogin() {
     }
     
     const loginBtn = document.querySelector('#step-login button');
-    loginBtn.innerHTML = "Authenticating...";
+    loginBtn.textContent = "Authenticating...";
     loginBtn.disabled = true;
     
     try {
-        const baseUrl = getAuthUrl("login");
-        const headers = await getAuthHeaders();
-        const url = baseUrl + 
-            `&section=${encodeURIComponent(section)}` +
-            `&group=${encodeURIComponent(group)}` +
-            `&key=${encodeURIComponent(keyInput)}`;
-        
-        const response = await fetch(url, { headers });
-        const data = await response.json();
+        const data = await makeApiRequest("login", {
+            section: section,
+            group: group,
+            key: keyInput
+        });
         
         if (!data.valid) {
             document.getElementById('login-error').innerText = 
                 data.error || "Incorrect key or credentials.";
-            loginBtn.innerHTML = "Login";
+            loginBtn.textContent = "Login";
             loginBtn.disabled = false;
             return;
         }
@@ -202,7 +235,7 @@ async function attemptLogin() {
         if (!data.students || data.students.length === 0) {
             document.getElementById('login-error').innerText = 
                 "No students found in this section and group.";
-            loginBtn.innerHTML = "Login";
+            loginBtn.textContent = "Login";
             loginBtn.disabled = false;
             return;
         }
@@ -215,7 +248,7 @@ async function attemptLogin() {
         currentGroupMembers.forEach(student => {
             const opt = document.createElement('option');
             opt.value = student['Student Name'];
-            opt.innerHTML = student['Student Name'];
+            opt.textContent = student['Student Name'];
             studentSelect.appendChild(opt);
         });
         
@@ -223,14 +256,14 @@ async function attemptLogin() {
         document.getElementById('group-key').value = '';
         
         switchView('step-setup');
-        loginBtn.innerHTML = "Login";
+        loginBtn.textContent = "Login";
         loginBtn.disabled = false;
         
     } catch (error) {
         console.error('Login error:', error);
         document.getElementById('login-error').innerText = 
             "Network error. Please check your connection and try again.";
-        loginBtn.innerHTML = "Login";
+        loginBtn.textContent = "Login";
         loginBtn.disabled = false;
     }
 }
@@ -251,38 +284,34 @@ async function startEvaluation() {
     }
     
     const startBtn = document.querySelector('#step-setup button');
-    startBtn.innerHTML = "Checking records...";
+    startBtn.textContent = "Checking records...";
     startBtn.disabled = true;
     
     try {
-        const baseUrl = getAuthUrl("checkEvaluation");
-        const headers = await getAuthHeaders();
-        const url = baseUrl + 
-            `&evaluator=${encodeURIComponent(currentUser)}` +
-            `&activity=${encodeURIComponent(currentActivity)}`;
-        
-        const response = await fetch(url, { headers });
-        const data = await response.json();
+        const data = await makeApiRequest("checkEvaluation", {
+            evaluator: currentUser,
+            activity: currentActivity
+        });
         
         if (data.hasEvaluated) {
             document.getElementById('setup-error').innerText = 
                 "You have already submitted an evaluation for this activity. " +
                 "You cannot evaluate the same activity twice.";
-            startBtn.innerHTML = "Start Evaluation";
+            startBtn.textContent = "Start Evaluation";
             startBtn.disabled = false;
             return;
         }
         
         buildEvaluationForm();
         switchView('step-eval');
-        startBtn.innerHTML = "Start Evaluation";
+        startBtn.textContent = "Start Evaluation";
         startBtn.disabled = false;
         
     } catch (error) {
         console.error('Start evaluation error:', error);
         document.getElementById('setup-error').innerText = 
             "Network error. Please try again.";
-        startBtn.innerHTML = "Start Evaluation";
+        startBtn.textContent = "Start Evaluation";
         startBtn.disabled = false;
     }
 }
@@ -291,7 +320,7 @@ async function startEvaluation() {
  * Build the evaluation form with all criteria
  */
 function buildEvaluationForm() {
-    document.getElementById('eval-subtitle').innerHTML = 
+    document.getElementById('eval-subtitle').textContent = 
         `Evaluating peers for ${currentActivity}`;
     
     const container = document.getElementById('eval-form-container');
@@ -451,27 +480,11 @@ async function executeSubmit() {
     isSubmitting = true;
     
     const finalBtn = document.getElementById('final-submit-btn');
-    finalBtn.innerHTML = "Saving...";
+    finalBtn.textContent = "Saving...";
     finalBtn.disabled = true;
     
     try {
-        const url = getAuthUrl();
-        if (!url) {
-            throw new Error("Configuration error");
-        }
-        
-        const headers = await getAuthHeaders();
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(pendingResults)
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
-        }
-        
-        const data = await response.json();
+        const data = await makeApiRequest("", {}, 'POST', pendingResults);
         
         if (data.error) {
             throw new Error(data.error);
@@ -485,7 +498,7 @@ async function executeSubmit() {
     } catch (error) {
         console.error('Submission error:', error);
         alert("Failed to submit: " + (error.message || "Network error. Please try again."));
-        finalBtn.innerHTML = "I Confirm";
+        finalBtn.textContent = "I Confirm";
         finalBtn.disabled = false;
     } finally {
         isSubmitting = false;
