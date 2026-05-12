@@ -8,119 +8,53 @@ function getAuthToken() {
 }
 
 /**
- * Make GET request (works without CORS issues)
+ * Make API request - all requests use GET with parameters
+ * to avoid CORS preflight issues
  */
-async function makeGetRequest(action, params = {}) {
+async function makeApiCall(action, params = {}, postData = null) {
     if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) {
         throw new Error("Configuration error: WebApp URL not set");
     }
     
     const url = new URL(webAppUrl);
     url.searchParams.append("token", getAuthToken());
-    url.searchParams.append("action", action);
     
+    if (action) {
+        url.searchParams.append("action", action);
+    }
+    
+    // Add all params to URL
     Object.keys(params).forEach(key => {
         url.searchParams.append(key, params[key]);
     });
     
-    // Use no-cors mode for GET requests
-    const response = await fetch(url.toString(), {
-        method: 'GET',
-        mode: 'no-cors',
-        cache: 'no-cache',
-        redirect: 'follow'
-    });
-    
-    // With no-cors, we can't read the response directly
-    // We need to use a workaround
-    if (response.type === 'opaque') {
-        // For opaque responses, we need to make the same request using JSONP
-        return await makeJsonpRequest(url.toString());
-    }
-    
-    return await response.json();
-}
-
-/**
- * Make JSONP request for GET operations
- */
-function makeJsonpRequest(url) {
-    return new Promise((resolve, reject) => {
-        const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
-        const script = document.createElement('script');
-        
-        window[callbackName] = function(data) {
-            delete window[callbackName];
-            document.body.removeChild(script);
-            resolve(data);
-        };
-        
-        const jsonpUrl = url + '&callback=' + callbackName;
-        script.src = jsonpUrl;
-        script.onerror = function() {
-            delete window[callbackName];
-            document.body.removeChild(script);
-            reject(new Error('JSONP request failed'));
-        };
-        
-        document.body.appendChild(script);
-    });
-}
-
-/**
- * Make POST request using form submission to avoid CORS
- */
-function makePostRequest(data) {
-    return new Promise((resolve, reject) => {
-        const url = webAppUrl + '?token=' + encodeURIComponent(getAuthToken());
-        
-        // Create a hidden iframe for the form submission
-        const iframe = document.createElement('iframe');
-        iframe.name = 'submit_frame';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        // Create a form that will submit to the iframe
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = url;
-        form.target = 'submit_frame';
-        form.style.display = 'none';
-        
-        // Add data as a hidden input
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'data';
-        input.value = JSON.stringify(data);
-        form.appendChild(input);
-        
-        // Handle response
-        const timeout = setTimeout(() => {
-            cleanup();
-            reject(new Error('Request timed out'));
-        }, 30000);
-        
-        function cleanup() {
-            clearTimeout(timeout);
-            document.body.removeChild(form);
-            document.body.removeChild(iframe);
+    // If we have POST data, send it as a parameter
+    if (postData) {
+        url.searchParams.append("data", JSON.stringify(postData));
+        // Use POST method but with query parameters (no preflight)
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'data=' + encodeURIComponent(JSON.stringify(postData))
+        });
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            return { result: text };
         }
-        
-        iframe.onload = function() {
-            try {
-                const response = iframe.contentDocument.body.textContent;
-                const parsed = JSON.parse(response);
-                cleanup();
-                resolve(parsed);
-            } catch (e) {
-                cleanup();
-                reject(new Error('Invalid response'));
-            }
-        };
-        
-        document.body.appendChild(form);
-        form.submit();
-    });
+    } else {
+        // Simple GET request
+        const response = await fetch(url.toString());
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            return { result: text };
+        }
+    }
 }
 
 let currentGroupMembers = [];
@@ -134,15 +68,14 @@ let isSubmitting = false;
  * Initialize the application
  */
 window.onload = async function() {
-    const fetchUrl = getAuthUrl("getInitialData");
-    if (!fetchUrl) {
+    if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) {
         document.getElementById('loading-error').innerText = 
-            "Configuration Error: Application not properly configured. Please contact administrator.";
+            "Configuration Error: Application not properly configured.";
         return;
     }
     
     try {
-        const data = await makeGetRequest("getInitialData");
+        const data = await makeApiCall("getInitialData");
         
         if (data.error) {
             document.getElementById('loading-error').innerText = 
@@ -156,7 +89,7 @@ window.onload = async function() {
     } catch (error) {
         console.error('Initialization error:', error);
         document.getElementById('loading-error').innerText = 
-            "Connection failed. Please check your internet connection and try again.";
+            "Connection failed. Please try again.";
     }
 };
 
@@ -183,7 +116,7 @@ function processRubric(raw) {
 }
 
 /**
- * Populate dropdown selects with initial data
+ * Populate dropdown selects
  */
 function populateInitialDropdowns(data) {
     if (!data) return;
@@ -223,15 +156,7 @@ function populateInitialDropdowns(data) {
 }
 
 /**
- * Get auth URL (legacy function for compatibility)
- */
-function getAuthUrl(action = "") {
-    if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) return null;
-    return webAppUrl;
-}
-
-/**
- * Attempt login with provided credentials
+ * Attempt login
  */
 async function attemptLogin() {
     const section = document.getElementById('section-select').value;
@@ -250,7 +175,7 @@ async function attemptLogin() {
     loginBtn.disabled = true;
     
     try {
-        const data = await makeGetRequest("login", {
+        const data = await makeApiCall("login", {
             section: section,
             group: group,
             key: keyInput
@@ -284,22 +209,20 @@ async function attemptLogin() {
         });
         
         document.getElementById('group-key').value = '';
-        
         switchView('step-setup');
         loginBtn.textContent = "Login";
         loginBtn.disabled = false;
         
     } catch (error) {
         console.error('Login error:', error);
-        document.getElementById('login-error').innerText = 
-            "Network error. Please check your connection and try again.";
+        document.getElementById('login-error').innerText = "Network error. Please try again.";
         loginBtn.textContent = "Login";
         loginBtn.disabled = false;
     }
 }
 
 /**
- * Start evaluation for selected student and activity
+ * Start evaluation
  */
 async function startEvaluation() {
     currentUser = document.getElementById('student-select').value;
@@ -308,8 +231,7 @@ async function startEvaluation() {
     document.getElementById('setup-error').innerText = '';
     
     if (!currentUser || !currentActivity) {
-        document.getElementById('setup-error').innerText = 
-            "Please select your name and an activity.";
+        document.getElementById('setup-error').innerText = "Please select your name and an activity.";
         return;
     }
     
@@ -318,15 +240,14 @@ async function startEvaluation() {
     startBtn.disabled = true;
     
     try {
-        const data = await makeGetRequest("checkEvaluation", {
+        const data = await makeApiCall("checkEvaluation", {
             evaluator: currentUser,
             activity: currentActivity
         });
         
         if (data.hasEvaluated) {
             document.getElementById('setup-error').innerText = 
-                "You have already submitted an evaluation for this activity. " +
-                "You cannot evaluate the same activity twice.";
+                "You have already submitted an evaluation for this activity.";
             startBtn.textContent = "Start Evaluation";
             startBtn.disabled = false;
             return;
@@ -339,15 +260,14 @@ async function startEvaluation() {
         
     } catch (error) {
         console.error('Start evaluation error:', error);
-        document.getElementById('setup-error').innerText = 
-            "Network error. Please try again.";
+        document.getElementById('setup-error').innerText = "Network error. Please try again.";
         startBtn.textContent = "Start Evaluation";
         startBtn.disabled = false;
     }
 }
 
 /**
- * Build the evaluation form with all criteria
+ * Build evaluation form
  */
 function buildEvaluationForm() {
     document.getElementById('eval-subtitle').textContent = 
@@ -368,7 +288,7 @@ function buildEvaluationForm() {
     const criteriaNames = Object.keys(rubricData);
     
     if (criteriaNames.length === 0) {
-        container.innerHTML = '<p>No evaluation criteria loaded. Please refresh the page.</p>';
+        container.innerHTML = '<p>No evaluation criteria loaded. Please refresh.</p>';
         return;
     }
     
@@ -415,7 +335,7 @@ function buildEvaluationForm() {
 }
 
 /**
- * Check if all criteria are completed for a peer
+ * Check completion
  */
 function checkCompletion(peerIndex) {
     const card = document.getElementById(`peer-card-${peerIndex}`);
@@ -432,7 +352,7 @@ function checkCompletion(peerIndex) {
 }
 
 /**
- * Validate and prepare evaluation submission
+ * Submit evaluation
  */
 function submitEvaluation() {
     document.getElementById('eval-error').innerText = '';
@@ -450,8 +370,6 @@ function submitEvaluation() {
     
     const criteriaNames = Object.keys(rubricData);
     const results = [];
-    let hasErrors = false;
-    let errorMessages = [];
     
     for (let i = 0; i < peers.length; i++) {
         const peerResult = {
@@ -467,20 +385,14 @@ function submitEvaluation() {
             );
             
             if (!checkedRadio) {
-                errorMessages.push(`Please rate all criteria for ${peers[i]['Student Name']}`);
-                hasErrors = true;
-                break;
+                document.getElementById('eval-error').innerText = 
+                    `Please rate all criteria for ${peers[i]['Student Name']}`;
+                return;
             }
             peerResult.scores[criteriaNames[c]] = checkedRadio.value;
         }
         
-        if (hasErrors) break;
         results.push(peerResult);
-    }
-    
-    if (hasErrors) {
-        document.getElementById('eval-error').innerText = errorMessages.join(', ');
-        return;
     }
     
     pendingResults = results;
@@ -501,7 +413,7 @@ function submitEvaluation() {
 }
 
 /**
- * Execute final submission using form POST to avoid CORS
+ * Execute final submission
  */
 async function executeSubmit() {
     if (isSubmitting) return;
@@ -512,7 +424,27 @@ async function executeSubmit() {
     finalBtn.disabled = true;
     
     try {
-        const data = await makePostRequest(pendingResults);
+        // Send POST with form-encoded body to avoid CORS preflight
+        const url = new URL(webAppUrl);
+        url.searchParams.append("token", getAuthToken());
+        
+        const formBody = 'data=' + encodeURIComponent(JSON.stringify(pendingResults));
+        
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formBody
+        });
+        
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error("Invalid server response");
+        }
         
         if (data.error) {
             throw new Error(data.error);
@@ -536,7 +468,7 @@ async function executeSubmit() {
 }
 
 /**
- * Switch between application views
+ * Switch views
  */
 function switchView(viewId) {
     document.querySelectorAll('.card').forEach(card => {
@@ -550,7 +482,7 @@ function switchView(viewId) {
     }
 }
 
-// Expose functions to global scope
+// Expose to global scope
 window.attemptLogin = attemptLogin;
 window.startEvaluation = startEvaluation;
 window.submitEvaluation = submitEvaluation;
