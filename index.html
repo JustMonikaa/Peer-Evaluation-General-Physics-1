@@ -27,12 +27,15 @@
             </select>
 
             <label for="group-select">Group Number</label>
-            <select id="group-select" required>
-                <option value="">-- Select Group --</option>
+            <select id="group-select" required disabled>
+                <option value="">-- Select Section First --</option>
             </select>
 
             <label for="group-key">Group Key</label>
-            <input type="password" id="group-key" placeholder="Enter key" required autocomplete="off">
+            <div class="password-field">
+                <input type="password" id="group-key" placeholder="Enter key" required autocomplete="off">
+                <button type="button" class="toggle-password" onclick="togglePasswordVisibility()" aria-label="Show password">👁️</button>
+            </div>
             
             <button type="submit" id="login-btn">
                 <span class="btn-text">Login</span>
@@ -44,6 +47,9 @@
 
     <div id="step-setup" class="card">
         <h2>Welcome!</h2>
+        <div id="saved-indicator" style="display: none; background: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+            ⚠️ You have a partially saved evaluation. Your previous selections will be restored.
+        </div>
         
         <form onsubmit="event.preventDefault(); startEvaluation();">
             <label for="student-select">Who are you?</label>
@@ -70,6 +76,7 @@
         <p id="eval-subtitle"></p>
         <div id="eval-form-container"></div>
         <div class="eval-actions">
+            <button id="save-progress-btn" onclick="saveProgress()" class="secondary-btn">💾 Save Progress</button>
             <button id="submit-btn" onclick="submitEvaluation()">Review & Submit</button>
             <button onclick="switchView('step-setup')" class="back-btn">← Change Selection</button>
         </div>
@@ -95,7 +102,7 @@
         <p>Your evaluations have been saved securely. You cannot evaluate this activity again.</p>
         <div class="eval-actions">
             <button onclick="printReceipt()">🖨️ Print Receipt</button>
-            <button onclick="location.reload()" class="back-btn">Start Over (Next Student)</button>
+            <button onclick="resetForNextStudent()" class="back-btn">Start Over (Next Student)</button>
         </div>
     </div>
 

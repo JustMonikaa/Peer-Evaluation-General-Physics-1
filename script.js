@@ -1,6 +1,7 @@
 const webAppUrl = "INSERT_SECRET_URL_HERE";
 const AUTH_TOKEN = "AUTH_TOKEN_PLACEHOLDER";
 const FORM_VERSION = "2.0"; // Track form version for data integrity
+const STORAGE_PREFIX = "peer_eval_"; // Prefix for localStorage keys
 
 /**
  * Get auth token
@@ -10,8 +11,8 @@ function getAuthToken() {
 }
 
 /**
- * Make API request - all requests use GET with parameters
- * to avoid CORS preflight issues
+ * Make API request to Google Apps Script
+ * All requests use GET with parameters to avoid CORS preflight issues
  */
 async function makeApiCall(action, params = {}, postData = null) {
     if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) {
@@ -64,9 +65,11 @@ let currentActivity = "";
 let currentSection = "";
 let currentGroup = "";
 let pendingResults = [];
+let savedResults = []; // For partial save functionality
 let rubricData = {};
 let isSubmitting = false;
 let maxPossibleScore = 0;
+let allSectionGroups = {}; // Store groups by section
 
 /**
  * Show loading state on a button
@@ -87,6 +90,192 @@ function setButtonLoading(buttonId, isLoading) {
         if (btnText) btnText.style.display = 'inline';
         if (spinner) spinner.style.display = 'none';
     }
+}
+
+/**
+ * Toggle password visibility
+ */
+function togglePasswordVisibility() {
+    const passwordField = document.getElementById('group-key');
+    const toggleBtn = document.querySelector('.toggle-password');
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleBtn.textContent = '🙈';
+        toggleBtn.setAttribute('aria-label', 'Hide password');
+    } else {
+        passwordField.type = 'password';
+        toggleBtn.textContent = '👁️';
+        toggleBtn.setAttribute('aria-label', 'Show password');
+    }
+}
+
+/**
+ * Save partial evaluation to localStorage
+ */
+function saveProgress() {
+    const peers = currentGroupMembers.filter(s => 
+        s['Student Name'] !== currentUser
+    );
+    
+    const criteriaNames = Object.keys(rubricData);
+    let hasAnyData = false;
+    
+    // Save all ratings for all peers
+    for (let i = 0; i < peers.length; i++) {
+        for (let c = 0; c < criteriaNames.length; c++) {
+            const checkedRadio = document.querySelector(
+                `input[name="peer${i}_crit${c}"]:checked`
+            );
+            
+            if (checkedRadio) {
+                hasAnyData = true;
+                const saveKey = STORAGE_PREFIX + currentSection + "_" + currentGroup + "_" + 
+                               currentUser + "_" + currentActivity + "_" + 
+                               peers[i]['Student Name'] + "_" + criteriaNames[c];
+                localStorage.setItem(saveKey, checkedRadio.value);
+            }
+        }
+    }
+    
+    if (!hasAnyData) {
+        document.getElementById('eval-error').innerText = 
+            "No ratings selected. Please rate at least one criterion before saving.";
+        return;
+    }
+    
+    // Save metadata about this partial save
+    const metaKey = STORAGE_PREFIX + currentSection + "_" + currentGroup + "_" + 
+                    currentUser + "_" + currentActivity + "_meta";
+    localStorage.setItem(metaKey, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        section: currentSection,
+        group: currentGroup,
+        user: currentUser,
+        activity: currentActivity
+    }));
+    
+    // Show success message temporarily
+    showTemporaryMessage('eval-error', '✅ Progress saved successfully! You can return to this evaluation later.', 'success');
+}
+
+/**
+ * Load and restore partial saved evaluation
+ */
+function loadPartialSave() {
+    const metaKey = STORAGE_PREFIX + currentSection + "_" + currentGroup + "_" + 
+                    currentUser + "_" + currentActivity + "_meta";
+    const meta = localStorage.getItem(metaKey);
+    
+    if (meta) {
+        try {
+            const metaData = JSON.parse(meta);
+            // Check if save is less than 7 days old
+            const savedDate = new Date(metaData.savedAt);
+            const now = new Date();
+            const daysDiff = (now - savedDate) / (1000 * 60 * 60 * 24);
+            
+            if (daysDiff <= 7) {
+                return true; // Has valid partial save
+            } else {
+                // Clean up old saves
+                clearPartialSave();
+                return false;
+            }
+        } catch (e) {
+            console.error('Failed to parse saved metadata:', e);
+            return false;
+        }
+    }
+    return false;
+}
+
+/**
+ * Restore partial saved evaluation to the form
+ */
+function restoreSavedEvaluation() {
+    const peers = currentGroupMembers.filter(s => 
+        s['Student Name'] !== currentUser
+    );
+    const criteriaNames = Object.keys(rubricData);
+    let restoredCount = 0;
+    
+    peers.forEach((peer, peerIndex) => {
+        criteriaNames.forEach((criteria, criteriaIndex) => {
+            const saveKey = STORAGE_PREFIX + currentSection + "_" + currentGroup + "_" + 
+                           currentUser + "_" + currentActivity + "_" + 
+                           peer['Student Name'] + "_" + criteria;
+            const savedValue = localStorage.getItem(saveKey);
+            
+            if (savedValue) {
+                const radioBtn = document.querySelector(
+                    `input[name="peer${peerIndex}_crit${criteriaIndex}"][value="${savedValue}"]`
+                );
+                if (radioBtn) {
+                    radioBtn.checked = true;
+                    restoredCount++;
+                }
+            }
+        });
+        
+        // Check completion for this peer
+        if (restoredCount > 0) {
+            checkCompletion(peerIndex);
+        }
+    });
+    
+    if (restoredCount > 0) {
+        document.getElementById('saved-indicator').style.display = 'block';
+    }
+}
+
+/**
+ * Clear partial save (after successful submission)
+ */
+function clearPartialSave() {
+    const metaKey = STORAGE_PREFIX + currentSection + "_" + currentGroup + "_" + 
+                    currentUser + "_" + currentActivity + "_meta";
+    localStorage.removeItem(metaKey);
+    
+    // Also clear any saved ratings
+    const peers = currentGroupMembers.filter(s => 
+        s['Student Name'] !== currentUser
+    );
+    const criteriaNames = Object.keys(rubricData);
+    
+    peers.forEach(peer => {
+        criteriaNames.forEach(criteria => {
+            const saveKey = STORAGE_PREFIX + currentSection + "_" + currentGroup + "_" + 
+                           currentUser + "_" + currentActivity + "_" + 
+                           peer['Student Name'] + "_" + criteria;
+            localStorage.removeItem(saveKey);
+        });
+    });
+}
+
+/**
+ * Show temporary success/error message
+ */
+function showTemporaryMessage(elementId, message, type = 'success') {
+    const element = document.getElementById(elementId);
+    const originalColor = element.style.color;
+    const originalBg = element.style.backgroundColor;
+    const originalBorder = element.style.borderLeft;
+    
+    if (type === 'success') {
+        element.style.color = '#155724';
+        element.style.backgroundColor = '#d4edda';
+        element.style.borderLeft = '4px solid #155724';
+    }
+    
+    element.innerText = message;
+    
+    setTimeout(() => {
+        element.style.color = originalColor;
+        element.style.backgroundColor = originalBg;
+        element.style.borderLeft = originalBorder;
+        element.innerText = '';
+    }, 3000);
 }
 
 /**
@@ -115,6 +304,7 @@ window.onload = async function() {
         
         processRubric(data.rubric);
         populateInitialDropdowns(data);
+        setupSectionChangeListener();
         switchView('step-login');
     } catch (error) {
         console.error('Initialization error:', error);
@@ -125,6 +315,77 @@ window.onload = async function() {
         document.getElementById('loading-retry').style.display = 'block';
     }
 };
+
+/**
+ * Setup listener for section changes to filter groups
+ */
+function setupSectionChangeListener() {
+    const sectionSelect = document.getElementById('section-select');
+    sectionSelect.addEventListener('change', function() {
+        const selectedSection = this.value;
+        const groupSelect = document.getElementById('group-select');
+        
+        if (!selectedSection) {
+            groupSelect.innerHTML = '<option value="">-- Select Section First --</option>';
+            groupSelect.disabled = true;
+            return;
+        }
+        
+        groupSelect.disabled = false;
+        groupSelect.innerHTML = '<option value="">-- Select Group --</option>';
+        
+        // Get groups for this section
+        const sectionGroups = allSectionGroups[selectedSection] || [];
+        
+        if (sectionGroups.length === 0) {
+            // If no groups found for this section, try to fetch them
+            fetchGroupsForSection(selectedSection);
+            groupSelect.innerHTML = '<option value="">Loading groups...</option>';
+            return;
+        }
+        
+        // Sort groups numerically (in case they're stored as strings)
+        const sortedGroups = sectionGroups.map(g => parseInt(g)).sort((a, b) => a - b);
+        
+        sortedGroups.forEach(grp => {
+            const opt = document.createElement('option');
+            opt.value = grp;
+            opt.textContent = "Group " + grp;
+            groupSelect.appendChild(opt);
+        });
+    });
+}
+
+/**
+ * Fetch groups for a specific section (fallback)
+ */
+async function fetchGroupsForSection(section) {
+    try {
+        const data = await makeApiCall("getSectionGroups", { section: section });
+        if (data.groups && data.groups.length > 0) {
+            allSectionGroups[section] = data.groups;
+            
+            // Update dropdown
+            const groupSelect = document.getElementById('group-select');
+            groupSelect.innerHTML = '<option value="">-- Select Group --</option>';
+            
+            const sortedGroups = data.groups.map(g => parseInt(g)).sort((a, b) => a - b);
+            sortedGroups.forEach(grp => {
+                const opt = document.createElement('option');
+                opt.value = grp;
+                opt.textContent = "Group " + grp;
+                groupSelect.appendChild(opt);
+            });
+        } else {
+            const groupSelect = document.getElementById('group-select');
+            groupSelect.innerHTML = '<option value="">No groups found for this section</option>';
+        }
+    } catch (error) {
+        console.error('Error fetching section groups:', error);
+        const groupSelect = document.getElementById('group-select');
+        groupSelect.innerHTML = '<option value="">Error loading groups. Please try again.</option>';
+    }
+}
 
 /**
  * Process rubric data into structured format
@@ -163,6 +424,7 @@ function processRubric(raw) {
 function populateInitialDropdowns(data) {
     if (!data) return;
     
+    // Populate sections
     const sectionSelect = document.getElementById('section-select');
     if (sectionSelect && data.sections) {
         sectionSelect.innerHTML = '<option value="">-- Select Section --</option>';
@@ -174,22 +436,21 @@ function populateInitialDropdowns(data) {
         });
     }
     
-    // Group dropdown will be populated dynamically when section is selected
-    const groupSelect = document.getElementById('group-select');
-    if (groupSelect && data.groups) {
-        groupSelect.innerHTML = '<option value="">-- Select Group --</option>';
-        // Store all groups for dynamic filtering
-        groupSelect.setAttribute('data-all-groups', JSON.stringify(data.groups));
-        
-        // Initially show all groups
-        data.groups.forEach(grp => {
-            const opt = document.createElement('option');
-            opt.value = grp;
-            opt.textContent = "Group " + grp;
-            groupSelect.appendChild(opt);
+    // Store groups by section if provided
+    if (data.groupsBySection) {
+        allSectionGroups = data.groupsBySection;
+    } else if (data.sections && data.groups) {
+        // Fallback: if backend only sends flat lists, try to determine groups per section
+        // This is where Google Sheets structure matters
+        // If your sheet has a column for "Section" and "Group", the backend should
+        // return groups organized by section
+        allSectionGroups = {};
+        data.sections.forEach(sec => {
+            allSectionGroups[sec] = data.groups || [];
         });
     }
     
+    // Populate activities
     const activitySelect = document.getElementById('activity-select');
     if (activitySelect && data.activities) {
         activitySelect.innerHTML = '<option value="">-- Select Activity --</option>';
@@ -293,7 +554,16 @@ async function startEvaluation() {
             return;
         }
         
+        const hasPartial = loadPartialSave();
         buildEvaluationForm();
+        
+        if (hasPartial) {
+            // Wait briefly for form to render, then restore
+            setTimeout(() => {
+                restoreSavedEvaluation();
+            }, 100);
+        }
+        
         switchView('step-eval');
         setButtonLoading('start-btn', false);
         
@@ -319,7 +589,7 @@ function buildEvaluationForm() {
     );
     
     if (peers.length === 0) {
-        container.innerHTML = '<p>No peers to evaluate in this group.</p>';
+        container.innerHTML = '<p>No peers to evaluate in this group. <button onclick="switchView(\'step-setup\')" class="back-btn" style="width:auto;">← Go Back</button></p>';
         return;
     }
     
@@ -436,10 +706,18 @@ function submitEvaluation() {
     }
     
     pendingResults = results;
+    buildConfirmSummary();
+    switchView('step-confirm');
+}
+
+/**
+ * Build confirmation summary
+ */
+function buildConfirmSummary() {
     const summaryContainer = document.getElementById('confirm-summary');
     summaryContainer.innerHTML = '';
     
-    results.forEach(res => {
+    pendingResults.forEach(res => {
         const total = Object.values(res.scores).reduce(
             (sum, val) => sum + Number(val), 0
         );
@@ -449,8 +727,6 @@ function submitEvaluation() {
         item.innerHTML = `<strong>${res.evaluatee}</strong>: ${total} / ${maxPossibleScore} points (${percentage}%)`;
         summaryContainer.appendChild(item);
     });
-    
-    switchView('step-confirm');
 }
 
 /**
@@ -463,10 +739,22 @@ async function executeSubmit() {
     setButtonLoading('final-submit-btn', true);
     
     try {
+        // Save a copy of pendingResults for receipt before they get cleared
+        const resultsForReceipt = [...pendingResults];
+        
         const url = new URL(webAppUrl);
         url.searchParams.append("token", getAuthToken());
         
-        const formBody = 'data=' + encodeURIComponent(JSON.stringify(pendingResults));
+        // Include form version and metadata for Google Sheets
+        const submissionData = {
+            evaluations: pendingResults,
+            formVersion: FORM_VERSION,
+            section: currentSection,
+            group: currentGroup,
+            submittedAt: new Date().toISOString()
+        };
+        
+        const formBody = 'data=' + encodeURIComponent(JSON.stringify(submissionData));
         
         const response = await fetch(url.toString(), {
             method: 'POST',
@@ -489,8 +777,11 @@ async function executeSubmit() {
         }
         
         if (data.success) {
-            // Build receipt before clearing data
-            buildReceipt();
+            // Build receipt BEFORE clearing data
+            buildReceipt(resultsForReceipt);
+            // Clear partial save if exists
+            clearPartialSave();
+            // Now clear pending results
             pendingResults = [];
             switchView('step-done');
         } else {
@@ -515,9 +806,9 @@ async function executeSubmit() {
 }
 
 /**
- * Build submission receipt
+ * Build submission receipt (FIXED: now receives data as parameter)
  */
-function buildReceipt() {
+function buildReceipt(resultsForReceipt) {
     const receiptDiv = document.getElementById('submission-receipt');
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { 
@@ -562,11 +853,11 @@ function buildReceipt() {
         </div>
         <div class="receipt-total">
             <span>Peers Evaluated:</span>
-            <span>${pendingResults.length}</span>
+            <span>${resultsForReceipt.length}</span>
         </div>`;
     
     // Add each peer's scores
-    pendingResults.forEach(res => {
+    resultsForReceipt.forEach(res => {
         const total = Object.values(res.scores).reduce(
             (sum, val) => sum + Number(val), 0
         );
@@ -578,6 +869,28 @@ function buildReceipt() {
     });
     
     receiptDiv.innerHTML = receiptHTML;
+}
+
+/**
+ * Reset for next student (instead of full page reload)
+ */
+function resetForNextStudent() {
+    // Clear state
+    currentUser = "";
+    currentActivity = "";
+    pendingResults = [];
+    savedResults = [];
+    
+    // Reset dropdowns
+    document.getElementById('student-select').innerHTML = '<option value="">-- Select your name --</option>';
+    document.getElementById('activity-select').value = '';
+    document.getElementById('saved-indicator').style.display = 'none';
+    
+    // Clear receipt
+    document.getElementById('submission-receipt').innerHTML = '';
+    
+    // Go back to setup
+    switchView('step-setup');
 }
 
 /**
@@ -610,3 +923,6 @@ window.submitEvaluation = submitEvaluation;
 window.checkCompletion = checkCompletion;
 window.switchView = switchView;
 window.printReceipt = printReceipt;
+window.saveProgress = saveProgress;
+window.togglePasswordVisibility = togglePasswordVisibility;
+window.resetForNextStudent = resetForNextStudent;

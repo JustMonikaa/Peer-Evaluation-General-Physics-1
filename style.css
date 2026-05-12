@@ -69,6 +69,12 @@ select:focus, input:focus {
     box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.1);
 }
 
+select:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
 button {
     background-color: #C8102E;
     color: white;
@@ -115,11 +121,59 @@ button:disabled:hover {
     background-color: #555;
 }
 
+.secondary-btn {
+    background-color: #0066cc;
+    margin-top: 10px;
+}
+
+.secondary-btn:hover {
+    background-color: #0052a3;
+}
+
 .retry-btn {
     background-color: #C8102E;
     margin: 10px auto 0 auto;
     width: auto;
     min-width: 200px;
+}
+
+/* Password field with toggle */
+.password-field {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+
+.password-field input[type="password"],
+.password-field input[type="text"] {
+    flex: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-top: 8px;
+}
+
+.toggle-password {
+    width: auto;
+    min-width: 50px;
+    margin-top: 8px;
+    padding: 12px 15px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    background-color: #f0f0f0;
+    color: #333;
+    border: 1px solid #ccc;
+    border-left: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+
+.toggle-password:hover {
+    background-color: #e0e0e0;
+    box-shadow: none;
+    transform: none;
 }
 
 /* Loading Spinner */
@@ -156,6 +210,7 @@ button:disabled:hover {
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 10px;
 }
 
 .eval-actions button {
@@ -171,6 +226,7 @@ button:disabled:hover {
     background-color: #fff3f3;
     border-radius: 4px;
     border-left: 4px solid #C8102E;
+    transition: all 0.3s ease;
 }
 
 .error:empty {
@@ -314,12 +370,6 @@ button:disabled:hover {
     z-index: 2;
 }
 
-.radio-label input[type="radio"]:checked {
-    border-color: #C8102E;
-    background: #fff0f0;
-    border: 2px solid #C8102E;
-}
-
 .content-wrapper {
     pointer-events: none;
     position: relative;
@@ -411,6 +461,8 @@ button:disabled:hover {
     margin-top: 10px;
     padding-top: 10px;
     border-top: 2px solid #C8102E;
+    display: flex;
+    justify-content: space-between;
 }
 
 /* Improved responsive design */
@@ -455,6 +507,22 @@ button:disabled:hover {
     
     .criteria-title {
         font-size: 16px;
+    }
+    
+    .password-field {
+        flex-direction: column;
+    }
+    
+    .toggle-password {
+        width: 100%;
+        border: 1px solid #ccc;
+        border-top: none;
+        border-radius: 0 0 4px 4px;
+    }
+    
+    .password-field input {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }
 }
 
