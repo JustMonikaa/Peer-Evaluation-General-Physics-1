@@ -1,0 +1,41 @@
+name: Deploy with Secrets
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inject Secrets into Script
+        run: |
+          sed -i "s|INSERT_SECRET_URL_HERE|${{ secrets.VITE_WEBAPP_URL }}|g" script.js
+          sed -i "s|'Physics-Secret-2026'|'${{ secrets.AUTH_TOKEN }}'|g" script.js
+
+      - name: Validate Secret Injection
+        run: |
+          if grep -q "INSERT_SECRET_URL_HERE" script.js; then
+            echo "::error::Secret injection failed - placeholder still exists in script.js"
+            exit 1
+          fi
+          echo "Secret injection validated successfully"
+
+      - name: Deploy to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy:
+    needs: build-and-deploy
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        uses: actions/deploy-pages@v4
