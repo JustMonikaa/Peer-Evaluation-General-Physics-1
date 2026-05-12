@@ -8,8 +8,12 @@
 </head>
 <body>
     <div id="step-loading" class="card active-step">
-        <p id="loading-message">Loading class roster... Please wait.</p>
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p id="loading-message">Loading class roster... Please wait.</p>
+        </div>
         <div id="loading-error" class="error" role="alert"></div>
+        <button id="loading-retry" class="retry-btn" style="display: none;" onclick="location.reload()">Retry Connection</button>
     </div>
 
     <div id="step-login" class="card">
@@ -30,7 +34,10 @@
             <label for="group-key">Group Key</label>
             <input type="password" id="group-key" placeholder="Enter key" required autocomplete="off">
             
-            <button type="submit">Login</button>
+            <button type="submit" id="login-btn">
+                <span class="btn-text">Login</span>
+                <span class="spinner-btn" style="display: none;"></span>
+            </button>
         </form>
         <div id="login-error" class="error" role="alert"></div>
     </div>
@@ -49,8 +56,12 @@
                 <option value="">-- Select Activity --</option>
             </select>
 
-            <button type="submit">Start Evaluation</button>
+            <button type="submit" id="start-btn">
+                <span class="btn-text">Start Evaluation</span>
+                <span class="spinner-btn" style="display: none;"></span>
+            </button>
         </form>
+        <button onclick="switchView('step-login')" class="back-btn">← Back to Login</button>
         <div id="setup-error" class="error" role="alert"></div>
     </div>
 
@@ -58,7 +69,10 @@
         <h2>Peer Evaluation</h2>
         <p id="eval-subtitle"></p>
         <div id="eval-form-container"></div>
-        <button id="submit-btn" onclick="submitEvaluation()">Review & Submit</button>
+        <div class="eval-actions">
+            <button id="submit-btn" onclick="submitEvaluation()">Review & Submit</button>
+            <button onclick="switchView('step-setup')" class="back-btn">← Change Selection</button>
+        </div>
         <div id="eval-error" class="error" role="alert"></div>
     </div>
 
@@ -66,14 +80,23 @@
         <h2>Confirm Submission</h2>
         <p>Please review the total scores for your peers:</p>
         <div id="confirm-summary"></div>
-        <button id="final-submit-btn" onclick="executeSubmit()">I Confirm</button>
-        <button onclick="switchView('step-eval')" style="background-color: #666; margin-top: 10px;">Go Back</button>
+        <div class="eval-actions">
+            <button id="final-submit-btn" onclick="executeSubmit()">
+                <span class="btn-text">I Confirm</span>
+                <span class="spinner-btn" style="display: none;"></span>
+            </button>
+            <button onclick="switchView('step-eval')" class="back-btn">← Go Back</button>
+        </div>
     </div>
 
     <div id="step-done" class="card">
         <h2>Success!</h2>
+        <div id="submission-receipt"></div>
         <p>Your evaluations have been saved securely. You cannot evaluate this activity again.</p>
-        <button onclick="location.reload()">Start Over (Next Student)</button>
+        <div class="eval-actions">
+            <button onclick="printReceipt()">🖨️ Print Receipt</button>
+            <button onclick="location.reload()" class="back-btn">Start Over (Next Student)</button>
+        </div>
     </div>
 
     <script type="module" src="script.js"></script>
