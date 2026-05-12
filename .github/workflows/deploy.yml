@@ -12,22 +12,26 @@ jobs:
 
       - name: Inject Secrets into Script
         run: |
-          # Replace the placeholder with the actual WebApp URL
+          # Replace the WebApp URL placeholder
           sed -i "s|INSERT_SECRET_URL_HERE|${{ secrets.VITE_WEBAPP_URL }}|g" script.js
           # Replace the auth token placeholder
-          sed -i "s|'Physics-Secret-2026'|'${{ secrets.AUTH_TOKEN }}'|g" script.js
+          sed -i "s|AUTH_TOKEN_PLACEHOLDER|${{ secrets.AUTH_TOKEN }}|g" script.js
 
-      - name: Validate Secret Injection
+      - name: Validate URL Injection
         run: |
           if grep -q "INSERT_SECRET_URL_HERE" script.js; then
             echo "::error::Secret injection failed - URL placeholder still exists"
             exit 1
           fi
-          if grep -q "Physics-Secret-2026" script.js; then
+          echo "URL injection validated successfully"
+
+      - name: Validate Auth Token Injection
+        run: |
+          if grep -q "AUTH_TOKEN_PLACEHOLDER" script.js; then
             echo "::error::Secret injection failed - auth token placeholder still exists"
             exit 1
           fi
-          echo "Secret injection validated successfully"
+          echo "Auth token injection validated successfully"
 
       - name: Deploy to GitHub Pages
         uses: actions/upload-pages-artifact@v3
