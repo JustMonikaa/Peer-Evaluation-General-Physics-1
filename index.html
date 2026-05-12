@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peer Evaluation System (General Physics 1/Sir Ed)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="step-loading" class="card active-step">
+        <p id="loading-message">Loading class roster... Please wait.</p>
+        <div id="loading-error" class="error" role="alert"></div>
+    </div>
+
+    <div id="step-login" class="card">
+        <h2>Student Login</h2>
+        <h3>General Physics 1 Peer Evaluation Form (Sir Ed)</h3>
+        
+        <form onsubmit="event.preventDefault(); attemptLogin();">
+            <label for="section-select">Section</label>
+            <select id="section-select" required>
+                <option value="">-- Select Section --</option>
+            </select>
+
+            <label for="group-select">Group Number</label>
+            <select id="group-select" required>
+                <option value="">-- Select Group --</option>
+            </select>
+
+            <label for="group-key">Group Key</label>
+            <input type="password" id="group-key" placeholder="Enter key" required autocomplete="off">
+            
+            <button type="submit">Login</button>
+        </form>
+        <div id="login-error" class="error" role="alert"></div>
+    </div>
+
+    <div id="step-setup" class="card">
+        <h2>Welcome!</h2>
+        
+        <form onsubmit="event.preventDefault(); startEvaluation();">
+            <label for="student-select">Who are you?</label>
+            <select id="student-select" required>
+                <option value="">-- Select your name --</option>
+            </select>
+
+            <label for="activity-select">Activity Number</label>
+            <select id="activity-select" required>
+                <option value="">-- Select Activity --</option>
+            </select>
+
+            <button type="submit">Start Evaluation</button>
+        </form>
+        <div id="setup-error" class="error" role="alert"></div>
+    </div>
+
+    <div id="step-eval" class="card">
+        <h2>Peer Evaluation</h2>
+        <p id="eval-subtitle"></p>
+        <div id="eval-form-container"></div>
+        <button id="submit-btn" onclick="submitEvaluation()">Review & Submit</button>
+        <div id="eval-error" class="error" role="alert"></div>
+    </div>
+
+    <div id="step-confirm" class="card">
+        <h2>Confirm Submission</h2>
+        <p>Please review the total scores for your peers:</p>
+        <div id="confirm-summary"></div>
+        <button id="final-submit-btn" onclick="executeSubmit()">I Confirm</button>
+        <button onclick="switchView('step-eval')" style="background-color: #666; margin-top: 10px;">Go Back</button>
+    </div>
+
+    <div id="step-done" class="card">
+        <h2>Success!</h2>
+        <p>Your evaluations have been saved securely. You cannot evaluate this activity again.</p>
+        <button onclick="location.reload()">Start Over (Next Student)</button>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
