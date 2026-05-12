@@ -12,13 +12,19 @@ jobs:
 
       - name: Inject Secrets into Script
         run: |
+          # Replace the placeholder with the actual WebApp URL
           sed -i "s|INSERT_SECRET_URL_HERE|${{ secrets.VITE_WEBAPP_URL }}|g" script.js
+          # Replace the auth token placeholder
           sed -i "s|'Physics-Secret-2026'|'${{ secrets.AUTH_TOKEN }}'|g" script.js
 
       - name: Validate Secret Injection
         run: |
           if grep -q "INSERT_SECRET_URL_HERE" script.js; then
-            echo "::error::Secret injection failed - placeholder still exists in script.js"
+            echo "::error::Secret injection failed - URL placeholder still exists"
+            exit 1
+          fi
+          if grep -q "Physics-Secret-2026" script.js; then
+            echo "::error::Secret injection failed - auth token placeholder still exists"
             exit 1
           fi
           echo "Secret injection validated successfully"
