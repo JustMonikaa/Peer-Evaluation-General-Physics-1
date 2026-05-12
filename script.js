@@ -1,98 +1,126 @@
 const webAppUrl = "INSERT_SECRET_URL_HERE";
 
 /**
- * Get authenticated URL for API requests
- * Uses no-cors mode to avoid CORS issues with Google Apps Script
+ * Get auth token
  */
-function getAuthUrl(action = "") {
-    if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) return null;
-    
-    try {
-        const url = new URL(webAppUrl);
-        if (action) url.searchParams.append("action", action);
-        return url.toString();
-    } catch (e) {
-        console.error('Invalid WebApp URL:', e);
-        return null;
-    }
+function getAuthToken() {
+    return 'Physics-Secret-2026'; // Will be replaced during deployment
 }
 
 /**
- * Get auth token for API requests
- * The token is appended as query parameter for all requests
+ * Make GET request (works without CORS issues)
  */
-let authToken = null;
-
-async function getAuthToken() {
-    if (!authToken) {
-        // Get token from session storage or fetch it
-        authToken = sessionStorage.getItem('auth_token');
-        if (!authToken) {
-            // In production, this would be injected during build
-            authToken = 'Physics-Secret-2026'; // Will be replaced during deployment
-            sessionStorage.setItem('auth_token', authToken);
-        }
-    }
-    return authToken;
-}
-
-/**
- * Make API request to Google Apps Script
- * Uses redirect mode and token in URL to avoid CORS preflight
- */
-async function makeApiRequest(action, params = {}, method = 'GET', body = null) {
-    const baseUrl = getAuthUrl(action);
-    if (!baseUrl) {
+async function makeGetRequest(action, params = {}) {
+    if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) {
         throw new Error("Configuration error: WebApp URL not set");
     }
     
-    const token = await getAuthToken();
-    const url = new URL(baseUrl);
-    url.searchParams.append("token", token);
+    const url = new URL(webAppUrl);
+    url.searchParams.append("token", getAuthToken());
+    url.searchParams.append("action", action);
     
-    // Add all params to URL for GET requests
-    if (method === 'GET') {
-        Object.keys(params).forEach(key => {
-            url.searchParams.append(key, params[key]);
-        });
+    Object.keys(params).forEach(key => {
+        url.searchParams.append(key, params[key]);
+    });
+    
+    // Use no-cors mode for GET requests
+    const response = await fetch(url.toString(), {
+        method: 'GET',
+        mode: 'no-cors',
+        cache: 'no-cache',
+        redirect: 'follow'
+    });
+    
+    // With no-cors, we can't read the response directly
+    // We need to use a workaround
+    if (response.type === 'opaque') {
+        // For opaque responses, we need to make the same request using JSONP
+        return await makeJsonpRequest(url.toString());
     }
     
-    const fetchOptions = {
-        method: method,
-        // Use 'cors' mode but with redirect to handle Google Apps Script
-        mode: 'cors',
-        redirect: 'follow',
-    };
-    
-    // Add headers and body for POST requests
-    if (method === 'POST') {
-        fetchOptions.headers = {
-            'Content-Type': 'text/plain', // Use text/plain to avoid preflight
-            'Authorization': token
+    return await response.json();
+}
+
+/**
+ * Make JSONP request for GET operations
+ */
+function makeJsonpRequest(url) {
+    return new Promise((resolve, reject) => {
+        const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+        const script = document.createElement('script');
+        
+        window[callbackName] = function(data) {
+            delete window[callbackName];
+            document.body.removeChild(script);
+            resolve(data);
         };
-        if (body) {
-            fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
-        }
-    }
-    
-    try {
-        const response = await fetch(url.toString(), fetchOptions);
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const jsonpUrl = url + '&callback=' + callbackName;
+        script.src = jsonpUrl;
+        script.onerror = function() {
+            delete window[callbackName];
+            document.body.removeChild(script);
+            reject(new Error('JSONP request failed'));
+        };
+        
+        document.body.appendChild(script);
+    });
+}
+
+/**
+ * Make POST request using form submission to avoid CORS
+ */
+function makePostRequest(data) {
+    return new Promise((resolve, reject) => {
+        const url = webAppUrl + '?token=' + encodeURIComponent(getAuthToken());
+        
+        // Create a hidden iframe for the form submission
+        const iframe = document.createElement('iframe');
+        iframe.name = 'submit_frame';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        
+        // Create a form that will submit to the iframe
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        form.target = 'submit_frame';
+        form.style.display = 'none';
+        
+        // Add data as a hidden input
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'data';
+        input.value = JSON.stringify(data);
+        form.appendChild(input);
+        
+        // Handle response
+        const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error('Request timed out'));
+        }, 30000);
+        
+        function cleanup() {
+            clearTimeout(timeout);
+            document.body.removeChild(form);
+            document.body.removeChild(iframe);
         }
         
-        const text = await response.text();
-        try {
-            return JSON.parse(text);
-        } catch (e) {
-            // If not JSON, return text wrapped in object
-            return { result: text };
-        }
-    } catch (error) {
-        console.error('API request failed:', error);
-        throw error;
-    }
+        iframe.onload = function() {
+            try {
+                const response = iframe.contentDocument.body.textContent;
+                const parsed = JSON.parse(response);
+                cleanup();
+                resolve(parsed);
+            } catch (e) {
+                cleanup();
+                reject(new Error('Invalid response'));
+            }
+        };
+        
+        document.body.appendChild(form);
+        form.submit();
+    });
 }
 
 let currentGroupMembers = [];
@@ -106,9 +134,6 @@ let isSubmitting = false;
  * Initialize the application
  */
 window.onload = async function() {
-    // Clear any existing auth token to ensure fresh start
-    sessionStorage.removeItem('auth_token');
-    
     const fetchUrl = getAuthUrl("getInitialData");
     if (!fetchUrl) {
         document.getElementById('loading-error').innerText = 
@@ -117,7 +142,7 @@ window.onload = async function() {
     }
     
     try {
-        const data = await makeApiRequest("getInitialData");
+        const data = await makeGetRequest("getInitialData");
         
         if (data.error) {
             document.getElementById('loading-error').innerText = 
@@ -143,7 +168,7 @@ function processRubric(raw) {
     if (!Array.isArray(raw)) return;
     
     raw.forEach(row => {
-        if (!row[0] || !row[1]) return; // Skip invalid rows
+        if (!row[0] || !row[1]) return;
         
         const criteria = String(row[0]);
         const level = String(row[1]);
@@ -198,6 +223,14 @@ function populateInitialDropdowns(data) {
 }
 
 /**
+ * Get auth URL (legacy function for compatibility)
+ */
+function getAuthUrl(action = "") {
+    if (!webAppUrl || webAppUrl.includes("INSERT_SECRET")) return null;
+    return webAppUrl;
+}
+
+/**
  * Attempt login with provided credentials
  */
 async function attemptLogin() {
@@ -205,7 +238,6 @@ async function attemptLogin() {
     const group = document.getElementById('group-select').value;
     const keyInput = document.getElementById('group-key').value;
     
-    // Clear previous errors
     document.getElementById('login-error').innerText = '';
     
     if (!section || !group || !keyInput) {
@@ -218,7 +250,7 @@ async function attemptLogin() {
     loginBtn.disabled = true;
     
     try {
-        const data = await makeApiRequest("login", {
+        const data = await makeGetRequest("login", {
             section: section,
             group: group,
             key: keyInput
@@ -242,7 +274,6 @@ async function attemptLogin() {
         
         currentGroupMembers = data.students;
         
-        // Populate student select
         const studentSelect = document.getElementById('student-select');
         studentSelect.innerHTML = '<option value="">-- Select your name --</option>';
         currentGroupMembers.forEach(student => {
@@ -252,7 +283,6 @@ async function attemptLogin() {
             studentSelect.appendChild(opt);
         });
         
-        // Clear sensitive data
         document.getElementById('group-key').value = '';
         
         switchView('step-setup');
@@ -288,7 +318,7 @@ async function startEvaluation() {
     startBtn.disabled = true;
     
     try {
-        const data = await makeApiRequest("checkEvaluation", {
+        const data = await makeGetRequest("checkEvaluation", {
             evaluator: currentUser,
             activity: currentActivity
         });
@@ -326,7 +356,6 @@ function buildEvaluationForm() {
     const container = document.getElementById('eval-form-container');
     container.innerHTML = '';
     
-    // Filter out the current user from evaluation targets
     const peers = currentGroupMembers.filter(s => 
         s['Student Name'] !== currentUser
     );
@@ -454,7 +483,6 @@ function submitEvaluation() {
         return;
     }
     
-    // Prepare summary for confirmation
     pendingResults = results;
     const summaryContainer = document.getElementById('confirm-summary');
     summaryContainer.innerHTML = '';
@@ -473,7 +501,7 @@ function submitEvaluation() {
 }
 
 /**
- * Execute final submission to server
+ * Execute final submission using form POST to avoid CORS
  */
 async function executeSubmit() {
     if (isSubmitting) return;
@@ -484,16 +512,18 @@ async function executeSubmit() {
     finalBtn.disabled = true;
     
     try {
-        const data = await makeApiRequest("", {}, 'POST', pendingResults);
+        const data = await makePostRequest(pendingResults);
         
         if (data.error) {
             throw new Error(data.error);
         }
         
-        // Success - clear sensitive data
-        pendingResults = [];
-        
-        switchView('step-done');
+        if (data.success) {
+            pendingResults = [];
+            switchView('step-done');
+        } else {
+            throw new Error("Submission failed");
+        }
         
     } catch (error) {
         console.error('Submission error:', error);
@@ -516,12 +546,11 @@ function switchView(viewId) {
     const targetView = document.getElementById(viewId);
     if (targetView) {
         targetView.classList.add('active-step');
-        // Scroll to top of view
         targetView.scrollIntoView({ behavior: 'smooth' });
     }
 }
 
-// Expose functions to global scope for HTML onclick handlers
+// Expose functions to global scope
 window.attemptLogin = attemptLogin;
 window.startEvaluation = startEvaluation;
 window.submitEvaluation = submitEvaluation;
