@@ -738,14 +738,15 @@ async function executeSubmit() {
     
     setButtonLoading('final-submit-btn', true);
     
+    // Create a strict 35-second timeout to prevent the UI from freezing infinitely
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
+    
     try {
-        // Save a copy of pendingResults for receipt before they get cleared
         const resultsForReceipt = [...pendingResults];
-        
         const url = new URL(webAppUrl);
         url.searchParams.append("token", getAuthToken());
         
-        // Include form version and metadata for Google Sheets
         const submissionData = {
             evaluations: pendingResults,
             formVersion: FORM_VERSION,
@@ -761,48 +762,47 @@ async function executeSubmit() {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: formBody
+            body: formBody,
+            signal: controller.signal // Attaches the failsafe timeout
         });
+        
+        clearTimeout(timeoutId); // Clear the timeout if the request succeeds
         
         const text = await response.text();
         let data;
         try {
             data = JSON.parse(text);
         } catch (e) {
-            throw new Error("Invalid server response");
+            throw new Error("Invalid server response. Please check your Web App URL.");
         }
-
-        // EXPLICIT REJECTION HANDLING: Catches LockService timeouts from backend
+        
         if (!data.success) {
-            setButtonLoading('final-submit-btn', false);
-            isSubmitting = false;
             alert(data.error || "System is busy with other submissions. Please try again in a moment.");
             return;
         }
         
-        // Build receipt BEFORE clearing data
         buildReceipt(resultsForReceipt);
-        // Clear partial save if exists
         clearPartialSave();
-        // Now clear pending results
         pendingResults = [];
         switchView('step-done');
         
     } catch (error) {
         console.error('Submission error:', error);
         let errorMsg = "Failed to submit: ";
-        if (error.message.includes("Rate limit")) {
+        
+        if (error.name === 'AbortError') {
+            errorMsg += "The server took too long to respond. Please check your internet connection and try again.";
+        } else if (error.message.includes("Rate limit")) {
             errorMsg += "Rate limit exceeded. Please wait up to 1 hour before trying again.";
-        } else if (error.message.includes("already submitted")) {
-            errorMsg += "You have already submitted an evaluation for this activity.";
         } else {
             errorMsg += (error.message || "Network error. Please check your connection and try again.");
         }
+        
         alert(errorMsg);
     } finally {
+        // Guaranteed to run, turning off the spinner regardless of success or failure
         isSubmitting = false;
-        // GUARANTEE THE SPINNER TURNS OFF NO MATTER WHAT
-        setButtonLoading('final-submit-btn', false); 
+        setButtonLoading('final-submit-btn', false);
     }
 }
 
