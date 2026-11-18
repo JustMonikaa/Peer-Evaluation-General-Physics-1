@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Peer Evaluation System (GPHY74P/GPHY75P)</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Added html2canvas for mobile-friendly image receipts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
     <div id="step-loading" class="card active-step">
         <div class="loading-container">
             <div class="spinner"></div>
-            <p id="loading-message">Loading Class Roster... Please wait.</p>
+            <p id="loading-message">Loading class roster... Please wait.</p>
         </div>
         <div id="loading-error" class="error" role="alert"></div>
         <button id="loading-retry" class="retry-btn" style="display: none;" onclick="location.reload()">Retry Connection</button>
@@ -18,7 +20,7 @@
 
     <div id="step-login" class="card">
         <h2>Student Login</h2>
-        <h3>Physics 1/Physics 2 Peer Evaluation Form</h3>
+        <h3>Physics 1/Physics 2Peer Evaluation Form (GPHY74P/GPHY75P)</h3>
         
         <form onsubmit="event.preventDefault(); attemptLogin();">
             <label for="section-select">Section</label>
@@ -57,7 +59,7 @@
                 <option value="">-- Select your name --</option>
             </select>
 
-            <label for="activity-select">Select the Laboratory Activity to Evaluate</label>
+            <label for="activity-select">Select the Activity to Evaluate</label>
             <select id="activity-select" required>
                 <option value="">-- Select Activity --</option>
             </select>
@@ -75,12 +77,27 @@
         <h2>Peer Evaluation</h2>
         <p id="eval-subtitle"></p>
         <div id="eval-form-container"></div>
-        <div class="eval-actions">
-            <button id="save-progress-btn" onclick="saveProgress()" class="secondary-btn">💾 Save Progress</button>
-            <button id="submit-btn" onclick="submitEvaluation()">Review & Submit</button>
-            <button onclick="switchView('step-setup')" class="back-btn">← Change Selection</button>
-        </div>
+        
         <div id="eval-error" class="error" role="alert"></div>
+
+        <!-- NEW: Dynamic Next/Prev Navigation -->
+        <div class="eval-navigation">
+            <button id="prev-peer-btn" onclick="prevPeer()" class="secondary-btn" style="display: none;">← Previous Evaluatee</button>
+            <button id="next-peer-btn" onclick="nextPeer()" style="display: none;">Next Evaluatee →</button>
+        </div>
+
+        <!-- NEW: Submit actions hidden until the last peer -->
+        <div class="eval-actions" id="eval-submit-actions" style="display: none; margin-top: 15px;">
+            <button id="submit-btn" onclick="submitEvaluation()">Review & Submit</button>
+        </div>
+        
+        <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+        
+        <!-- Persistent bottom actions -->
+        <div class="eval-actions-secondary" style="display: flex; gap: 15px; justify-content: center; flex-direction: column;">
+            <button id="save-progress-btn" onclick="saveProgress()" class="secondary-btn" style="margin: 0; max-width: 400px; align-self: center;">💾 Save Progress</button>
+            <button onclick="switchView('step-setup')" class="back-btn" style="margin: 0; max-width: 400px; align-self: center;">← Change Selection</button>
+        </div>
     </div>
 
     <div id="step-confirm" class="card">
@@ -99,9 +116,10 @@
     <div id="step-done" class="card">
         <h2>Success!</h2>
         <div id="submission-receipt"></div>
-        <p>Your evaluations have been saved securely. <strong>You cannot evaluate this activity again</strong>.</p>
+        <p>Your evaluations have been saved securely. <strong>You cannot evaluate this activity again.</strong></p>
         <div class="eval-actions">
-            <button onclick="printReceipt()">🖨️ Print Receipt</button>
+            <!-- NEW: Image download button replaces print -->
+            <button id="download-receipt-btn" onclick="downloadReceipt()">📸 Save Receipt as Image</button>
             <button onclick="resetForNextStudent()" class="back-btn">Start Over (Next Student)</button>
         </div>
     </div>
