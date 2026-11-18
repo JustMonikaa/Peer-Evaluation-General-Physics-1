@@ -893,7 +893,8 @@ function buildReceipt(resultsForReceipt) {
     let receiptHTML = `
         <div class="receipt-header">
             <h3>Submission Receipt</h3>
-            <p>General Physics 1 - Peer Evaluation</p>
+            <p>GPHY74P/GPHY75P Peer Evaluation</p>
+            <p><i>Click the button below to save this receipt and upload to your respective submission bin if your teacher instructs you to.</i></p>
             <p><small>Form Version: ${FORM_VERSION}</small></p>
         </div>
         <div class="receipt-row">
