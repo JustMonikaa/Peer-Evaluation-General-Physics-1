@@ -771,22 +771,22 @@ async function executeSubmit() {
         } catch (e) {
             throw new Error("Invalid server response");
         }
-        
-        if (data.error) {
-            throw new Error(data.error);
+
+        // EXPLICIT REJECTION HANDLING: Catches LockService timeouts from backend
+        if (!data.success) {
+            setButtonLoading('final-submit-btn', false);
+            isSubmitting = false;
+            alert(data.error || "System is busy with other submissions. Please try again in a moment.");
+            return;
         }
         
-        if (data.success) {
-            // Build receipt BEFORE clearing data
-            buildReceipt(resultsForReceipt);
-            // Clear partial save if exists
-            clearPartialSave();
-            // Now clear pending results
-            pendingResults = [];
-            switchView('step-done');
-        } else {
-            throw new Error("Submission failed");
-        }
+        // Build receipt BEFORE clearing data
+        buildReceipt(resultsForReceipt);
+        // Clear partial save if exists
+        clearPartialSave();
+        // Now clear pending results
+        pendingResults = [];
+        switchView('step-done');
         
     } catch (error) {
         console.error('Submission error:', error);
@@ -799,9 +799,10 @@ async function executeSubmit() {
             errorMsg += (error.message || "Network error. Please check your connection and try again.");
         }
         alert(errorMsg);
-        setButtonLoading('final-submit-btn', false);
     } finally {
         isSubmitting = false;
+        // GUARANTEE THE SPINNER TURNS OFF NO MATTER WHAT
+        setButtonLoading('final-submit-btn', false); 
     }
 }
 
