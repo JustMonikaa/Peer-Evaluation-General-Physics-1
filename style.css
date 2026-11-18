@@ -223,6 +223,23 @@ button:disabled:hover {
     max-width: 400px;
 }
 
+/* NEW: Navigation and hidden logic for single evaluatee view */
+.eval-navigation {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.eval-navigation button {
+    flex: 1;
+    margin-top: 0;
+}
+
+.hidden-peer {
+    display: none !important;
+}
+
 .error {
     color: #C8102E;
     font-weight: bold;
@@ -435,7 +452,7 @@ button:disabled:hover {
 
 /* Receipt styling */
 #submission-receipt {
-    background: #f9f9f9;
+    background: #ffffff;
     border: 2px solid #C8102E;
     border-radius: 8px;
     padding: 20px;
@@ -530,6 +547,10 @@ button:disabled:hover {
         border-bottom-left-radius: 0;
         border-bottom-right-radius: 0;
     }
+    
+    .eval-navigation {
+        flex-direction: column;
+    }
 }
 
 /* Print styles */
@@ -546,8 +567,8 @@ button:disabled:hover {
         break-inside: avoid;
     }
     
-    button {
-        display: none;
+    button, .eval-actions, .eval-navigation {
+        display: none !important;
     }
 }
 
