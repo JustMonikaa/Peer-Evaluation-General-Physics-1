@@ -62,6 +62,7 @@ let currentSection = "";
 let currentGroup = "";
 let pendingResults = [];
 let rubricData = {};
+let rawRubricRows = []; // Store raw rubric rows for per-activity filtering
 let isSubmitting = false;
 let maxPossibleScore = 0;
 let allSectionGroups = {};
@@ -293,7 +294,7 @@ window.onload = async function() {
             return;
         }
         
-        processRubric(data.rubric);
+        rawRubricRows = Array.isArray(data.rubric) ? data.rubric : [];
         populateInitialDropdowns(data);
         setupSectionChangeListener();
         switchView('step-login');
@@ -374,19 +375,46 @@ async function fetchGroupsForSection(section) {
 }
 
 /**
- * Process rubric data into structured format
+ * Process rubric data into structured format for the selected activity
  */
-function processRubric(raw) {
+function processRubric(raw, activity = null) {
     rubricData = {};
+    maxPossibleScore = 0;
     if (!Array.isArray(raw)) return;
     
-    raw.forEach(row => {
-        if (!row[0] || !row[1]) return;
-        
-        const criteria = String(row[0]);
-        const level = String(row[1]);
-        const title = String(row[2] || '');
-        const desc = String(row[3] || '');
+    // Ignore blank rows and header rows where Points (Column B) is not numeric
+    const validRows = raw.filter(row => {
+        if (!row || !row[0] || row[1] === undefined || row[1] === null) return false;
+        const pointsStr = String(row[1]).trim();
+        return pointsStr !== '' && !isNaN(Number(pointsStr));
+    });
+    
+    const targetActivity = activity ? String(activity).trim().toLowerCase() : '';
+    
+    // Match rows whose Column E (Activity) matches the selected activity (supports comma-separated lists too)
+    let matchedRows = [];
+    if (targetActivity) {
+        matchedRows = validRows.filter(row => {
+            const rowActivity = row[4] !== undefined && row[4] !== null ? String(row[4]).trim().toLowerCase() : '';
+            if (!rowActivity) return false;
+            if (rowActivity === targetActivity) return true;
+            return rowActivity.split(',').map(a => a.trim()).includes(targetActivity);
+        });
+    }
+    
+    // Fallback to "Default" or blank Column E rows if no activity-specific rubric is defined
+    const rowsToUse = matchedRows.length > 0
+        ? matchedRows
+        : validRows.filter(row => {
+            const rowActivity = row[4] !== undefined && row[4] !== null ? String(row[4]).trim().toLowerCase() : '';
+            return rowActivity === '' || rowActivity === 'default';
+        });
+    
+    rowsToUse.forEach(row => {
+        const criteria = String(row[0]).trim();
+        const level = String(row[1]).trim();
+        const title = String(row[2] || '').trim();
+        const desc = String(row[3] || '').trim();
         
         if (!rubricData[criteria]) {
             rubricData[criteria] = [];
@@ -394,7 +422,6 @@ function processRubric(raw) {
         rubricData[criteria].push({ level, title, desc });
     });
     
-    maxPossibleScore = 0;
     Object.keys(rubricData).forEach(criteria => {
         if (rubricData[criteria].length > 0) {
             const maxLevel = Math.max(...rubricData[criteria].map(l => parseInt(l.level) || 0));
@@ -532,8 +559,9 @@ async function startEvaluation() {
             return;
         }
         
-        // Reset index for single-view and initialize UI
+        // Reset index for single-view and load the rubric for the selected activity
         currentPeerIndex = 0;
+        processRubric(rawRubricRows, currentActivity);
         const hasPartial = loadPartialSave();
         buildEvaluationForm();
         updatePeerNavigation();
